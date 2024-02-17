@@ -20,3 +20,8 @@ embedded-svc = { version = "0.26.1", default-features = false, features = [] }
 embedded-io = "0.6.1"
 heapless = { version = "0.8.0", default-features = false }
 
+# Patch the Git version of the hal packages as there's LCD_CAM support added but
+# not released yet (v0.16.0 should have it I think).
+[patch.crates-io]
+esp32s3-hal = { git = "https://github.com/esp-rs/esp-hal.git" }
+esp-hal = { git = "https://github.com/esp-rs/esp-hal.git" }
