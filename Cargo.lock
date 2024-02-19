@@ -664,6 +664,7 @@ dependencies = [
  "esp-println",
  "esp-wifi",
  "esp32s3-hal",
+ "fugit",
  "heapless 0.8.0",
  "log",
  "smoltcp",

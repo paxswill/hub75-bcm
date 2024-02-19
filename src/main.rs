@@ -13,6 +13,8 @@ use esp32s3_hal::{timer::TimerGroup, Rng};
 #[global_allocator]
 static ALLOCATOR: esp_alloc::EspHeap = esp_alloc::EspHeap::empty();
 
+mod matrix;
+
 fn init_heap() {
     const HEAP_SIZE: usize = 32 * 1024;
     static mut HEAP: MaybeUninit<[u8; HEAP_SIZE]> = MaybeUninit::uninit();
