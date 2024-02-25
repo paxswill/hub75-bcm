@@ -3,7 +3,6 @@ use embedded_graphics_core::draw_target::DrawTarget;
 use embedded_graphics_core::geometry::{OriginDimensions, Size};
 use embedded_graphics_core::pixelcolor::PixelColor;
 use embedded_graphics_core::Pixel;
-use itertools::iproduct;
 
 use crate::{const_check, const_not_zero};
 

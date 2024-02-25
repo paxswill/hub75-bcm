@@ -1,0 +1,11 @@
+[package]
+name = "hub75-matrix"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+embedded-graphics-core = "0.4.0"
+# Temporary until the platform dependencies are split out properly
+esp32s3-hal = "0.15.0"

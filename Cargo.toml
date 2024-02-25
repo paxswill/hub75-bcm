@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "esp32s3-alarm-clock",
+    "esp32s3-alarm-clock", "hub75-matrix",
 ]
 
 [profile.release]

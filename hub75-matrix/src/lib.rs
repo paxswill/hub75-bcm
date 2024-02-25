@@ -1,9 +1,12 @@
+#![no_std]
+
 pub mod buffer;
 mod clock_divider;
 pub mod color;
 pub mod config;
 pub mod dma;
 pub mod rgb_matrix;
+mod util;
 
 #[macro_export]
 macro_rules! const_check {
