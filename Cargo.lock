@@ -48,6 +48,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
+name = "az"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b7e4c2464d97fe331d41de9d5db0def0a96f4d823b8b32a2efd503578988973"
+
+[[package]]
 name = "bare-metal"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -67,6 +73,17 @@ name = "bitfield"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2d7e60934ceec538daadb9d8432424ed043a904d8e0243f3c6446bce549a46ac"
+
+[[package]]
+name = "bitfield-struct"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b0fe3d90b1534e1b0e92008ad2d9f9a3ddb650965ae0592ed1d1031b9dea94f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.49",
+]
 
 [[package]]
 name = "bitflags"
@@ -176,6 +193,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "either"
+version = "1.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11157ac094ffbdde99aa67b23417ebdd801842852b500e395a45a9c0aac03e4a"
+
+[[package]]
 name = "embassy-executor"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -222,6 +245,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "994f7e5b5cb23521c22304927195f236813053eb9c065dd2226a32ba64695446"
 dependencies = [
  "stable_deref_trait",
+]
+
+[[package]]
+name = "embedded-graphics-core"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba9ecd261f991856250d2207f6d8376946cd9f412a2165d3b75bc87a0bc7a044"
+dependencies = [
+ "az",
+ "byteorder",
 ]
 
 [[package]]
@@ -343,7 +376,7 @@ dependencies = [
 [[package]]
 name = "esp-hal"
 version = "0.15.0"
-source = "git+https://github.com/esp-rs/esp-hal.git#172d2b8777fa6d19bb5c1cd65651dda9742cede1"
+source = "git+https://github.com/paxswill/esp-hal.git?branch=dma-customization#54a39480f8c1bf68cf1369464058835020056d5f"
 dependencies = [
  "basic-toml",
  "bitfield",
@@ -354,10 +387,10 @@ dependencies = [
  "embedded-dma",
  "embedded-hal 0.2.7",
  "enumset",
- "esp-hal-procmacros 0.8.0 (git+https://github.com/esp-rs/esp-hal.git)",
+ "esp-hal-procmacros 0.8.0 (git+https://github.com/paxswill/esp-hal.git?branch=dma-customization)",
  "esp-synopsys-usb-otg",
- "esp32 0.28.0 (git+https://github.com/esp-rs/esp-pacs?rev=55f9f6c)",
- "esp32s2 0.19.0 (git+https://github.com/esp-rs/esp-pacs?rev=55f9f6c)",
+ "esp32 0.28.0 (git+https://github.com/esp-rs/esp-pacs?rev=ef39b1c)",
+ "esp32s2 0.19.0 (git+https://github.com/esp-rs/esp-pacs?rev=ef39b1c)",
  "esp32s3",
  "fugit",
  "log",
@@ -429,7 +462,7 @@ dependencies = [
 [[package]]
 name = "esp-hal-procmacros"
 version = "0.8.0"
-source = "git+https://github.com/esp-rs/esp-hal.git#172d2b8777fa6d19bb5c1cd65651dda9742cede1"
+source = "git+https://github.com/paxswill/esp-hal.git?branch=dma-customization#54a39480f8c1bf68cf1369464058835020056d5f"
 dependencies = [
  "darling",
  "document-features",
@@ -521,7 +554,7 @@ dependencies = [
 [[package]]
 name = "esp32"
 version = "0.28.0"
-source = "git+https://github.com/esp-rs/esp-pacs?rev=55f9f6c#55f9f6cdaff679a379b4f4f9f59b62b08deffdf2"
+source = "git+https://github.com/esp-rs/esp-pacs?rev=ef39b1c#ef39b1c4792f489cd6619d531c051027d7dd1f59"
 dependencies = [
  "critical-section",
  "vcell",
@@ -627,7 +660,7 @@ dependencies = [
 [[package]]
 name = "esp32s2"
 version = "0.19.0"
-source = "git+https://github.com/esp-rs/esp-pacs?rev=55f9f6c#55f9f6cdaff679a379b4f4f9f59b62b08deffdf2"
+source = "git+https://github.com/esp-rs/esp-pacs?rev=ef39b1c#ef39b1c4792f489cd6619d531c051027d7dd1f59"
 dependencies = [
  "critical-section",
  "vcell",
@@ -646,7 +679,7 @@ dependencies = [
 [[package]]
 name = "esp32s3"
 version = "0.23.0"
-source = "git+https://github.com/esp-rs/esp-pacs?rev=55f9f6c#55f9f6cdaff679a379b4f4f9f59b62b08deffdf2"
+source = "git+https://github.com/esp-rs/esp-pacs?rev=ef39b1c#ef39b1c4792f489cd6619d531c051027d7dd1f59"
 dependencies = [
  "critical-section",
  "vcell",
@@ -657,6 +690,8 @@ dependencies = [
 name = "esp32s3-alarm-clock"
 version = "0.1.0"
 dependencies = [
+ "bitfield-struct",
+ "embedded-graphics-core",
  "embedded-io",
  "embedded-svc 0.26.4",
  "esp-alloc",
@@ -666,6 +701,7 @@ dependencies = [
  "esp32s3-hal",
  "fugit",
  "heapless 0.8.0",
+ "itertools",
  "log",
  "smoltcp",
 ]
@@ -673,7 +709,7 @@ dependencies = [
 [[package]]
 name = "esp32s3-hal"
 version = "0.15.0"
-source = "git+https://github.com/esp-rs/esp-hal.git#172d2b8777fa6d19bb5c1cd65651dda9742cede1"
+source = "git+https://github.com/paxswill/esp-hal.git?branch=dma-customization#54a39480f8c1bf68cf1369464058835020056d5f"
 dependencies = [
  "document-features",
  "esp-hal",
@@ -805,6 +841,15 @@ checksum = "233cf39063f058ea2caae4091bf4a3ef70a653afbc026f5c4a4135d114e3c177"
 dependencies = [
  "equivalent",
  "hashbrown",
+]
+
+[[package]]
+name = "itertools"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
+dependencies = [
+ "either",
 ]
 
 [[package]]

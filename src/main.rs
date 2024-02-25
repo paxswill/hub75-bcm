@@ -14,6 +14,8 @@ use esp32s3_hal::{timer::TimerGroup, Rng};
 static ALLOCATOR: esp_alloc::EspHeap = esp_alloc::EspHeap::empty();
 
 mod matrix;
+mod rgb_matrix;
+mod util;
 
 fn init_heap() {
     const HEAP_SIZE: usize = 32 * 1024;
