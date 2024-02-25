@@ -1,28 +1,11 @@
-[package]
-name = "esp32s3-alarm-clock"
-version = "0.1.0"
-authors = ["Will Ross <paxswill@paxswill.com>"]
-edition = "2021"
-license = "MIT OR Apache-2.0"
+[workspace]
+resolver = "2"
+members = [
+    "esp32s3-alarm-clock",
+]
 
 [profile.release]
 debug = true
-
-[dependencies]
-esp32s3-hal = "0.15.0"
-esp-backtrace = { version = "0.11.0", features = ["esp32s3", "panic-handler", "exception-handler", "println"] }
-esp-println = { version = "0.9.0", features = ["esp32s3", "log"] }
-log = { version = "0.4.20" }
-esp-alloc = { version = "0.3.0" }
-esp-wifi  = { version = "0.3.0", features = ["esp32s3", "wifi"] }
-smoltcp = { version = "0.10.0", default-features=false, features = ["proto-igmp", "proto-ipv4", "socket-tcp", "socket-icmp", "socket-udp", "medium-ethernet", "proto-dhcpv4", "socket-raw", "socket-dhcpv4"] }
-embedded-svc = { version = "0.26.1", default-features = false, features = [] }
-embedded-io = "0.6.1"
-heapless = { version = "0.8.0", default-features = false }
-fugit = "0.3.7"
-itertools = { version = "0.12.1", default-features = false }
-embedded-graphics-core = "0.4.0"
-bitfield-struct = "0.6.0"
 
 # Patch the Git version of the hal packages as there's LCD_CAM support added but
 # not released yet (v0.16.0 should have it I think).
