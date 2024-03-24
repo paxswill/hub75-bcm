@@ -4,6 +4,7 @@ use core::marker::PhantomData;
 use crate::{const_check, const_not_zero};
 
 use super::config::MatrixConfig;
+use super::matrix_word::{MatrixPixel, MatrixWordMut};
 
 pub trait ColorStorage<const COLOR_DEPTH: usize> {
     const COLOR_DEPTH: usize = COLOR_DEPTH;
@@ -311,52 +312,50 @@ impl<
                 scanline
                     .planes
                     .iter_mut()
-                    .map(move |plane| (line_index, plane))
+                    .enumerate()
+                    .map(move |(plane_index, plane)| (plane_index, line_index, plane))
             })
-            .enumerate()
-            .flat_map(|(plane_index, (scanline_index, plane))| {
+            .flat_map(|(plane_index, scanline_index, plane)| {
                 plane
                     .buffer
                     .iter_mut()
-                    .map(move |word| (plane_index, scanline_index, word))
+                    .enumerate()
+                    .map(move |(word_index, word)| PixelRef {
+                        scanline: scanline_index,
+                        column: word_index,
+                        color_plane: plane_index,
+                        word,
+                    })
             })
-            .enumerate()
-            .map(
-                |(word_index, (plane_index, scanline_index, word))| PixelRef {
-                    scanline: scanline_index,
-                    column: word_index,
-                    color_plane: plane_index,
-                    word,
-                },
-            )
     }
 
     /// Set the address, output enable, and latch values across all pixels in a framebuffer.
     pub(crate) fn set_control_bits(&mut self, latch_blanking_count: u8) {
         let last_column = Self::WORDS_PER_PLANE - 1;
+        let non_blanked_range_start = latch_blanking_count as usize;
+        // Always at least one column, so subtract 1, then subtract the additional blanking
+        // columns.
+        let non_blanked_range_end = Self::WORDS_PER_PLANE - 1 - latch_blanking_count as usize;
+        let non_blanked_range = non_blanked_range_start..non_blanked_range_end;
         for pixel_ref in self.iter_mut_pixels() {
             // The first color plane has the previous scanline's address values as we're clocking
             // in the new scanline of data (except for the first row).
-            let address_bits = if pixel_ref.color_plane == 0 && pixel_ref.scanline != 0 {
-                pixel_ref.scanline - 1
+            let address = if pixel_ref.color_plane == 0 {
+                (pixel_ref.scanline + Self::SCANLINES_PER_FRAME - 1) % Self::SCANLINES_PER_FRAME
             } else {
                 pixel_ref.scanline
-            } as u16;
+            } as u8;
+            pixel_ref.word.set_address(address);
             // Set LAT at the last pixel in each scanline
-            let latch = match pixel_ref.column {
-                n if n == last_column => 1,
-                _ => 0,
-            } as u16;
-            let blanking_count = latch_blanking_count as usize;
-            let oe = if pixel_ref.column < blanking_count
-                || (pixel_ref.column > last_column - blanking_count)
-            {
-                1
+            if pixel_ref.column == last_column {
+                pixel_ref.word.set_latch();
             } else {
-                0
-            } as u16;
-            // Mask for RGB bits, then combine everything else
-            *pixel_ref.word &= 0x003F & (address_bits << 8) & (oe << 7) & (latch << 6);
+                pixel_ref.word.clear_latch();
+            }
+            // Set OE (output enable) for all columns besides the blanking range.
+            pixel_ref
+                .word
+                .set_output_enable_to(!non_blanked_range.contains(&pixel_ref.column));
         }
     }
 
@@ -449,5 +448,492 @@ impl<
             let len = unsafe { ptr_range.end.byte_offset_from(ptr_range.start) } as usize;
             (ptr_range.start as _, len)
         })
+    }
+}
+
+#[macro_export]
+macro_rules! alias_frame_buffer {
+    ($name:ident, $width:literal, $height:literal, $color_depth:literal, $chain_length:literal, $per_frame_denominator:literal) => {
+        type $name = FrameBuffer<
+            $width,
+            $height,
+            $chain_length,
+            $color_depth,
+            $per_frame_denominator,
+            // NOTE: the "2" here is the value of PIXELS_PER_CLOCK
+            { $width * $chain_length * $height / $per_frame_denominator / 2 },
+            { $height / ($height / $per_frame_denominator) },
+        >;
+    };
+    ($name:ident, $width:literal, $height:literal, $color_depth:literal, $chain_length:literal) => {
+        alias_frame_buffer!($name, $width, $height, $color_depth, $chain_length, 16);
+    };
+    ($name:ident, $width:literal, $height:literal, $color_depth:literal) => {
+        alias_frame_buffer!($name, $width, $height, $color_depth, 1);
+    };
+    ($name:ident, $width:literal, $height:literal) => {
+        alias_frame_buffer!($name, $width, $height, 8);
+    };
+}
+
+#[macro_export]
+macro_rules! declare_frame_buffer {
+    ($width:literal, $height:literal, $color_depth:literal, $chain_length:literal, $per_frame_denominator:literal) => {{
+        FrameBuffer::<
+            $width,
+            $height,
+            $chain_length,
+            $color_depth,
+            $per_frame_denominator,
+            // NOTE: the "2" here is the value of PIXELS_PER_CLOCK
+            { $width * $chain_length * $height / $per_frame_denominator / 2 },
+            { $height / ($height / $per_frame_denominator) },
+        >::new()
+    }};
+    ($width:literal, $height:literal, $color_depth:literal, $chain_length:literal) => {
+        declare_frame_buffer!($width, $height, $color_depth, $chain_length, 16)
+    };
+    ($width:literal, $height:literal, $color_depth:literal) => {
+        declare_frame_buffer!($width, $height, $color_depth, 1)
+    };
+    ($width:literal, $height:literal) => {
+        declare_frame_buffer!($width, $height, 8)
+    };
+}
+
+#[cfg(test)]
+mod test {
+
+    use super::*;
+
+    // Test cases are using std
+    extern crate std;
+    use std::vec::Vec;
+
+    #[test]
+    fn color_plane_length_eighth() {
+        let fb = declare_frame_buffer!(64, 32, 8, 1, 8);
+        assert_eq!(fb.scanlines[0].planes[0].buffer.len(), 64 * 2);
+    }
+
+    #[test]
+    fn color_plane_length_eighth_chained() {
+        let fb = declare_frame_buffer!(64, 32, 8, 2, 8);
+        assert_eq!(fb.scanlines[0].planes[0].buffer.len(), 64 * 2 * 2);
+    }
+
+    #[test]
+    fn color_plane_length_sixteenth() {
+        let fb = declare_frame_buffer!(64, 32, 8, 1, 16);
+        assert_eq!(fb.scanlines[0].planes[0].buffer.len(), 64);
+    }
+
+    #[test]
+    fn color_plane_length_sixteenth_chained() {
+        let fb = declare_frame_buffer!(64, 32, 8, 2, 16);
+        assert_eq!(fb.scanlines[0].planes[0].buffer.len(), 64 * 2);
+    }
+
+    #[test]
+    fn color_plane_new_empty() {
+        let plane = ColorPlane::<64, 32, 1, 8, 8, 128>::new();
+        for element in plane.buffer {
+            assert_eq!(element, 0)
+        }
+    }
+
+    #[test]
+    fn scan_line_plane_count_8() {
+        let scanline = Scanline::<64, 32, 1, 8, 8, 128>::new();
+        assert_eq!(scanline.planes.len(), 8)
+    }
+
+    #[test]
+    fn scan_line_plane_count_5() {
+        let scanline = Scanline::<64, 32, 1, 5, 8, 128>::new();
+        assert_eq!(scanline.planes.len(), 5)
+    }
+
+    #[test]
+    fn fb_num_elements_chain() {
+        let fb = declare_frame_buffer!(64, 32, 8, 2);
+        let total_words: usize = fb
+            .scanlines
+            .iter()
+            .flat_map(|s| s.planes.iter())
+            .map(|p| p.buffer.len())
+            .sum();
+        // height * width / 2: There's a word needed for every two pixels
+        // * 8: There's 8 color planes
+        // * 2: There's 2 panels chained together
+        assert_eq!(total_words, 64 * 32 / 2 * 8 * 2);
+    }
+
+    #[test]
+    fn fb_num_elements_eighth_square() {
+        let fb = declare_frame_buffer!(32, 32, 8, 1, 8);
+        let total_words: usize = fb
+            .scanlines
+            .iter()
+            .flat_map(|s| s.planes.iter())
+            .map(|p| p.buffer.len())
+            .sum();
+        // 32 * 32 / 2: 1 word for every two pixels
+        // * 8: There's 8 color planes
+        // * 1: (elided) There's only one panel in the chain
+        assert_eq!(total_words, 32 * 32 / 2 * 8);
+    }
+
+    #[test]
+    fn fb_num_elements_sixteenth_square() {
+        let fb = declare_frame_buffer!(32, 32, 8, 1, 16);
+        let total_words: usize = fb
+            .scanlines
+            .iter()
+            .flat_map(|s| s.planes.iter())
+            .map(|p| p.buffer.len())
+            .sum();
+        // 32 * 32 / 2: 1 word for every two pixels
+        // * 8: There's 8 color planes
+        // * 1: (elided) There's only one panel in the chain
+        assert_eq!(total_words, 32 * 32 / 2 * 8);
+    }
+
+    #[test]
+    fn fb_initial_blank() {
+        let fb = declare_frame_buffer!(32, 32, 8, 1, 16);
+        let every_element = fb
+            .scanlines
+            .iter()
+            .flat_map(|s| s.planes.iter())
+            .flat_map(|p| p.buffer.iter())
+            // Enumerate so we know which element wasn't zero
+            .enumerate();
+        for (index, element) in every_element {
+            assert_eq!(element, &0, "Element {} was not 0", index)
+        }
+    }
+
+    fn check_frame_buffer_control_bits<
+        const W: usize,
+        const H: usize,
+        const CL: usize,
+        const CD: usize,
+        const PFD: u8,
+        const WPP: usize,
+        const SPF: usize,
+    >(
+        mut fb: FrameBuffer<W, H, CL, CD, PFD, WPP, SPF>,
+        latch_blanking_count: usize,
+    ) {
+        fb.set_control_bits(latch_blanking_count as u8);
+        let expected_scanline_count = H / (H / PFD as usize);
+        assert_eq!(
+            fb.scanlines.len(),
+            expected_scanline_count,
+            "Unexpected scanline count"
+        );
+        for scanline_index in 0..expected_scanline_count {
+            let scanline = fb.scanlines[scanline_index];
+            let expected_buffer_length = W * H / PFD as usize / PIXELS_PER_CLOCK;
+            for plane_index in 0..CD {
+                let plane = scanline.planes[plane_index];
+                assert_eq!(
+                    plane.buffer.len(),
+                    expected_buffer_length,
+                    "Unexpected buffer length"
+                );
+                for column in 0..expected_buffer_length {
+                    let word = plane.buffer[column];
+                    // Ensure that OE (output enable) is set for the last element and any within
+                    // the given blanking period.
+                    if (0..latch_blanking_count).contains(&column) {
+                        assert!(
+                            word.output_enable(),
+                            "Initial OE is not set for column {} on scanline {}, plane {}",
+                            column,
+                            scanline_index,
+                            plane_index
+                        );
+                    } else if ((expected_buffer_length - 1 - latch_blanking_count)
+                        ..expected_buffer_length)
+                        .contains(&column)
+                    {
+                        assert!(
+                            word.output_enable(),
+                            "Trailing OE is not set for column {} on scanline {}, plane {}",
+                            column,
+                            scanline_index,
+                            plane_index
+                        );
+                    } else {
+                        assert!(
+                            !word.output_enable(),
+                            "OE is unexpectedly set for column {} on scanline {}, plane {}",
+                            column,
+                            scanline_index,
+                            plane_index
+                        );
+                    }
+                    // Ensure that LAT (latch) is set only on the last column
+                    if column == (expected_buffer_length - 1) {
+                        assert!(
+                            word.latch(),
+                            "LAT is not set for column {} on scanline {}, plane {}",
+                            column,
+                            scanline_index,
+                            plane_index
+                        );
+                    } else {
+                        assert!(
+                            !word.latch(),
+                            "LAT is unexpectedly set for column {} on scanline {}, plane {}",
+                            column,
+                            scanline_index,
+                            plane_index
+                        );
+                    }
+                    // Each scanlines address should be the scanline index, except for the first
+                    // color plane which uses the previous scanline's index
+                    if plane_index == 0 {
+                        let expected_index = if scanline_index == 0 {
+                            expected_scanline_count - 1
+                        } else {
+                            scanline_index - 1
+                        };
+                        assert_eq!(
+                            word.address(),
+                            expected_index as u8,
+                            "Unexpected index for first color plane"
+                        );
+                    } else {
+                        assert_eq!(
+                            word.address(),
+                            scanline_index as u8,
+                            "Invalid scanline index"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[test]
+    fn set_control_bits_eighth_square() {
+        let mut fb = declare_frame_buffer!(32, 32, 8, 1, 8);
+        let latch_blanking_count = 0usize;
+        check_frame_buffer_control_bits(fb, 0);
+    }
+
+    fn set_control_bits_eighth_square_blanking() {
+        let mut fb = declare_frame_buffer!(32, 32, 8, 1, 8);
+        check_frame_buffer_control_bits(fb, 2);
+    }
+
+    #[test]
+    fn set_control_bits_sixteenth_square() {
+        let mut fb = declare_frame_buffer!(32, 32, 8, 1, 16);
+        let latch_blanking_count = 0usize;
+        check_frame_buffer_control_bits(fb, 0);
+    }
+
+    #[test]
+    fn set_control_bits_sixteenth_square_blanking() {
+        let mut fb = declare_frame_buffer!(32, 32, 8, 1, 16);
+        let latch_blanking_count = 0usize;
+        check_frame_buffer_control_bits(fb, 2);
+    }
+
+    #[test]
+    fn set_upper_red() {
+        let mut fb = declare_frame_buffer!(64, 32, 8, 1, 16);
+        // Set the control bits; we need to ensure we don't clobber them.
+        fb.set_control_bits(0);
+        fb.set_brightness_bits(0, 255);
+        // Choosing different x and y values so we know the dimensions are correct.
+        let x = 5;
+        let y = 9;
+        let buffer_idx = 5;
+        let scanline_idx = 9;
+        // Choosing a nicely spread out value that'll hit each color plane differently.
+        let red: u8 = 0b10101100;
+        // Capture the initial value
+        let mut initial_values = Vec::new();
+        for plane_idx in 0..fb.color_depth() {
+            initial_values.push(fb.scanlines[scanline_idx].planes[plane_idx].buffer[buffer_idx]);
+        }
+        fb.set_pixel(x, y, red, 0, 0);
+        // expected in reverse
+        let expected_bits = [false, false, true, true, false, true, false, true];
+        for plane_idx in 0..fb.color_depth() {
+            let actual_word = fb.scanlines[scanline_idx].planes[plane_idx].buffer[buffer_idx];
+            let control_bits = actual_word & 0xFFC0;
+            assert_eq!(
+                control_bits, initial_values[plane_idx],
+                "control bits were clobbered"
+            );
+            assert_eq!(actual_word & 0x1 != 0, expected_bits[plane_idx]);
+        }
+    }
+
+    #[test]
+    fn set_upper_green() {
+        let mut fb = declare_frame_buffer!(64, 32, 8, 1, 16);
+        // Set the control bits; we need to ensure we don't clobber them.
+        fb.set_control_bits(0);
+        fb.set_brightness_bits(0, 255);
+        // Choosing different x and y values so we know the dimensions are correct.
+        let x = 5;
+        let y = 9;
+        let buffer_idx = 5;
+        let scanline_idx = 9;
+        // Choosing a nicely spread out value that'll hit each color plane differently.
+        let green: u8 = 0b10101100;
+        // Capture the initial value
+        let mut initial_values = Vec::new();
+        for plane_idx in 0..fb.color_depth() {
+            initial_values.push(fb.scanlines[scanline_idx].planes[plane_idx].buffer[buffer_idx]);
+        }
+        fb.set_pixel(x, y, 0, green, 0);
+        // expected in reverse
+        let expected_bits = [false, false, true, true, false, true, false, true];
+        for plane_idx in 0..fb.color_depth() {
+            let actual_word = fb.scanlines[scanline_idx].planes[plane_idx].buffer[buffer_idx];
+            let control_bits = actual_word & 0xFFC0;
+            assert_eq!(
+                control_bits, initial_values[plane_idx],
+                "control bits were clobbered"
+            );
+            assert_eq!(actual_word & 0x2 != 0, expected_bits[plane_idx]);
+        }
+    }
+
+    #[test]
+    fn set_upper_blue() {
+        let mut fb = declare_frame_buffer!(64, 32, 8, 1, 16);
+        // Set the control bits; we need to ensure we don't clobber them.
+        fb.set_control_bits(0);
+        fb.set_brightness_bits(0, 255);
+        // Choosing different x and y values so we know the dimensions are correct.
+        let x = 5;
+        let y = 9;
+        let buffer_idx = 5;
+        let scanline_idx = 9;
+        // Choosing a nicely spread out value that'll hit each color plane differently.
+        let blue: u8 = 0b10101100;
+        // Capture the initial value
+        let mut initial_values = Vec::new();
+        for plane_idx in 0..fb.color_depth() {
+            initial_values.push(fb.scanlines[scanline_idx].planes[plane_idx].buffer[buffer_idx]);
+        }
+        fb.set_pixel(x, y, 0, 0, blue);
+        // expected in reverse
+        let expected_bits = [false, false, true, true, false, true, false, true];
+        for plane_idx in 0..fb.color_depth() {
+            let actual_word = fb.scanlines[scanline_idx].planes[plane_idx].buffer[buffer_idx];
+            let control_bits = actual_word & 0xFFC0;
+            assert_eq!(
+                control_bits, initial_values[plane_idx],
+                "control bits were clobbered"
+            );
+            assert_eq!(actual_word & 0x4 != 0, expected_bits[plane_idx]);
+        }
+    }
+
+    #[test]
+    fn set_lower_red() {
+        let mut fb = declare_frame_buffer!(64, 32, 8, 1, 16);
+        // Set the control bits; we need to ensure we don't clobber them.
+        fb.set_control_bits(0);
+        fb.set_brightness_bits(0, 255);
+        // Choosing different x and y values so we know the dimensions are correct.
+        let x = 5;
+        let y = 20;
+        let buffer_idx = 5;
+        let scanline_idx = 4;
+        // Choosing a nicely spread out value that'll hit each color plane differently.
+        let red: u8 = 0b10101100;
+        // Capture the initial value
+        let mut initial_values = Vec::new();
+        for plane_idx in 0..fb.color_depth() {
+            initial_values.push(fb.scanlines[scanline_idx].planes[plane_idx].buffer[buffer_idx]);
+        }
+        fb.set_pixel(x, y, red, 0, 0);
+        // expected in reverse
+        let expected_bits = [false, false, true, true, false, true, false, true];
+        for plane_idx in 0..fb.color_depth() {
+            let actual_word = fb.scanlines[scanline_idx].planes[plane_idx].buffer[buffer_idx];
+            let control_bits = actual_word & 0xFFC0;
+            assert_eq!(
+                control_bits, initial_values[plane_idx],
+                "control bits were clobbered"
+            );
+            assert_eq!(actual_word & 0x8 != 0, expected_bits[plane_idx]);
+        }
+    }
+
+    #[test]
+    fn set_lower_green() {
+        let mut fb = declare_frame_buffer!(64, 32, 8, 1, 16);
+        // Set the control bits; we need to ensure we don't clobber them.
+        fb.set_control_bits(0);
+        fb.set_brightness_bits(0, 255);
+        // Choosing different x and y values so we know the dimensions are correct.
+        let x = 5;
+        let y = 20;
+        let buffer_idx = 5;
+        let scanline_idx = 4;
+        // Choosing a nicely spread out value that'll hit each color plane differently.
+        let green: u8 = 0b10101100;
+        // Capture the initial value
+        let mut initial_values = Vec::new();
+        for plane_idx in 0..fb.color_depth() {
+            initial_values.push(fb.scanlines[scanline_idx].planes[plane_idx].buffer[buffer_idx]);
+        }
+        fb.set_pixel(x, y, 0, green, 0);
+        // expected in reverse
+        let expected_bits = [false, false, true, true, false, true, false, true];
+        for plane_idx in 0..fb.color_depth() {
+            let actual_word = fb.scanlines[scanline_idx].planes[plane_idx].buffer[buffer_idx];
+            let control_bits = actual_word & 0xFFC0;
+            assert_eq!(
+                control_bits, initial_values[plane_idx],
+                "control bits were clobbered"
+            );
+            assert_eq!(actual_word & 0x10 != 0, expected_bits[plane_idx]);
+        }
+    }
+
+    #[test]
+    fn set_lower_blue() {
+        let mut fb = declare_frame_buffer!(64, 32, 8, 1, 16);
+        // Set the control bits; we need to ensure we don't clobber them.
+        fb.set_control_bits(0);
+        fb.set_brightness_bits(0, 255);
+        // Choosing different x and y values so we know the dimensions are correct.
+        let x = 5;
+        let y = 20;
+        let buffer_idx = 5;
+        let scanline_idx = 4;
+        // Choosing a nicely spread out value that'll hit each color plane differently.
+        let blue: u8 = 0b10101100;
+        // Capture the initial value
+        let mut initial_values = Vec::new();
+        for plane_idx in 0..fb.color_depth() {
+            initial_values.push(fb.scanlines[scanline_idx].planes[plane_idx].buffer[buffer_idx]);
+        }
+        fb.set_pixel(x, y, 0, 0, blue);
+        // expected in reverse
+        let expected_bits = [false, false, true, true, false, true, false, true];
+        for plane_idx in 0..fb.color_depth() {
+            let actual_word = fb.scanlines[scanline_idx].planes[plane_idx].buffer[buffer_idx];
+            let control_bits = actual_word & 0xFFC0;
+            assert_eq!(
+                control_bits, initial_values[plane_idx],
+                "control bits were clobbered"
+            );
+            assert_eq!(actual_word & 0x20 != 0, expected_bits[plane_idx]);
+        }
     }
 }
