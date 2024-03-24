@@ -5,6 +5,7 @@ mod clock_divider;
 pub mod color;
 pub mod config;
 pub mod dma;
+pub mod matrix_word;
 pub mod rgb_matrix;
 mod util;
 
