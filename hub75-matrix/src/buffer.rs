@@ -205,7 +205,7 @@ pub struct FrameBuffer<
         WORDS_PER_PLANE,
     >; SCANLINES_PER_FRAME],
 
-    buffer_index: Option<usize>,
+    configured: bool,
 
     _config:
         PhantomData<MatrixConfig<WIDTH, HEIGHT, CHAIN_LENGTH, COLOR_DEPTH, PER_FRAME_DENOMINATOR>>,
@@ -299,7 +299,7 @@ impl<
         >::new(); SCANLINES_PER_FRAME];
         Self {
             scanlines,
-            buffer_index: None,
+            configured: false,
             _config: PhantomData,
         }
     }
@@ -327,6 +327,17 @@ impl<
                         word,
                     })
             })
+    }
+
+    pub fn is_configured(&self) -> bool {
+        self.configured
+    }
+
+    pub(crate) fn configure(&mut self, latch_blanking_count: u8, brightness: u8) {
+        // self.set_control_bits(latch_blanking_count);
+        // self.set_brightness_bits(latch_blanking_count, brightness);
+        self.set_test_pattern();
+        self.configured = true;
     }
 
     /// Set the address, output enable, and latch values across all pixels in a framebuffer.

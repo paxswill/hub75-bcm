@@ -36,9 +36,22 @@ pub struct RgbMatrix<
     brightness: u8,
 
     brightness_dirty: bool,
+
+    pending_frame_buffer: Option<
+        &'a mut FrameBuffer<
+            WIDTH,
+            HEIGHT,
+            CHAIN_LENGTH,
+            COLOR_DEPTH,
+            PER_FRAME_DENOMINATOR,
+            WORDS_PER_PLANE,
+            SCANLINES_PER_FRAME,
+        >,
+    >,
 }
 
 impl<
+        'a,
         ColorType,
         const WIDTH: usize,
         const HEIGHT: usize,
@@ -50,6 +63,7 @@ impl<
         const BITMAP_ELEMENTS: usize,
     >
     RgbMatrix<
+        'a,
         ColorType,
         WIDTH,
         HEIGHT,
@@ -107,9 +121,34 @@ impl<
     const fn chain_width(&self) -> usize {
         Self::CHAIN_WIDTH
     }
+
+    pub fn brightness(&self) -> u8 {
+        self.brightness
+    }
+
+    pub fn set_brightness(&mut self, new_brightness: u8) {
+        self.brightness_dirty = new_brightness != self.brightness;
+        self.brightness = new_brightness;
+    }
+
+    pub fn configure_frame_buffer(
+        &self,
+        frame_buffer: &mut FrameBuffer<
+            WIDTH,
+            HEIGHT,
+            CHAIN_LENGTH,
+            COLOR_DEPTH,
+            PER_FRAME_DENOMINATOR,
+            WORDS_PER_PLANE,
+            SCANLINES_PER_FRAME,
+        >,
+    ) {
+        frame_buffer.configure(self.config.latch_blanking_count(), self.brightness);
+    }
 }
 
 impl<
+        'a,
         ColorType,
         const WIDTH: usize,
         const HEIGHT: usize,
@@ -121,6 +160,7 @@ impl<
         const BITMAP_ELEMENTS: usize,
     >
     RgbMatrix<
+        'a,
         ColorType,
         WIDTH,
         HEIGHT,
@@ -155,13 +195,17 @@ where
             let element_index = overall_bit_index / u32::BITS as usize;
             let bit_index = overall_bit_index % u32::BITS as usize;
             self.dirty_bitmap[element_index] |= 1 << bit_index;
+            if let Some(frame_buffer) = &mut self.pending_frame_buffer {
+                frame_buffer.set_pixel(x, y, new_color.red(), new_color.green(), new_color.blue());
+            }
+            self.pixel_buffer[y][panel_index][panel_x] = new_color;
         }
-        self.pixel_buffer[y][panel_index][panel_x] = new_color;
         Ok(())
     }
 }
 
 impl<
+        'a,
         ColorType,
         const WIDTH: usize,
         const HEIGHT: usize,
@@ -173,6 +217,7 @@ impl<
         const BITMAP_ELEMENTS: usize,
     >
     RgbMatrix<
+        'a,
         ColorType,
         WIDTH,
         HEIGHT,
@@ -189,18 +234,29 @@ where
     pub fn new(
         config: MatrixConfig<WIDTH, HEIGHT, CHAIN_LENGTH, COLOR_DEPTH, PER_FRAME_DENOMINATOR>,
     ) -> Self {
+        // Force the compiler to evaluate all the const checks
+        let _ = Self::WIDTH;
+        let _ = Self::HEIGHT;
+        let _ = Self::CHAIN_LENGTH;
+        let _ = Self::COLOR_DEPTH;
+        let _ = Self::PER_FRAME_DENOMINATOR;
+        let _ = Self::WORDS_PER_PLANE;
+        let _ = Self::SCANLINES_PER_FRAME;
+        let _ = Self::BITMAP_ELEMENTS;
+
         Self {
             config,
             pixel_buffer: [[[ColorType::default(); WIDTH]; CHAIN_LENGTH]; HEIGHT],
             dirty_bitmap: [0u32; BITMAP_ELEMENTS],
             brightness: Self::DEFAULT_BRIGHTNESS,
             brightness_dirty: false,
+            pending_frame_buffer: None,
         }
     }
 
-    pub fn configure_frame_buffer(
-        &self,
-        frame_buffer: &mut FrameBuffer<
+    pub fn set_pending(
+        &mut self,
+        mut new_frame_buffer: &'a mut FrameBuffer<
             WIDTH,
             HEIGHT,
             CHAIN_LENGTH,
@@ -209,21 +265,22 @@ where
             WORDS_PER_PLANE,
             SCANLINES_PER_FRAME,
         >,
-    ) {
-        frame_buffer.set_control_bits(self.config.latch_blanking_count());
-        frame_buffer.set_brightness_bits(self.config.latch_blanking_count(), self.brightness);
+    ) -> Option<
+        &'a mut FrameBuffer<
+            WIDTH,
+            HEIGHT,
+            CHAIN_LENGTH,
+            COLOR_DEPTH,
+            PER_FRAME_DENOMINATOR,
+            WORDS_PER_PLANE,
+            SCANLINES_PER_FRAME,
+        >,
+    > {
+        self.update_dirty(&mut new_frame_buffer);
+        self.pending_frame_buffer.replace(new_frame_buffer)
     }
 
-    pub fn brightness(&self) -> u8 {
-        self.brightness
-    }
-
-    pub fn set_brightness(&mut self, new_brightness: u8) {
-        self.brightness_dirty = new_brightness != self.brightness;
-        self.brightness = new_brightness;
-    }
-
-    pub fn flush(
+    fn update_dirty(
         &mut self,
         frame_buffer: &mut FrameBuffer<
             WIDTH,
@@ -239,19 +296,6 @@ where
             frame_buffer.set_brightness_bits(self.config.latch_blanking_count(), self.brightness);
             self.brightness_dirty = false;
         }
-        let pixel_buffer_iter = self
-            .pixel_buffer
-            .iter()
-            .enumerate()
-            .flat_map(|(y, panel)| panel.iter().zip(iter::repeat(y)))
-            .enumerate()
-            .flat_map(|(panel_index, (row, y))| {
-                let row_offset = panel_index * Self::WIDTH;
-                row.iter()
-                    .enumerate()
-                    .map(move |(row_index, color)| ((row_offset + row_index, y), color))
-            });
-
         for (element_index, element) in self
             .dirty_bitmap
             .iter_mut()
@@ -276,6 +320,7 @@ where
 }
 
 impl<
+        'a,
         ColorType,
         const WIDTH: usize,
         const HEIGHT: usize,
@@ -287,6 +332,7 @@ impl<
         const BITMAP_ELEMENTS: usize,
     > OriginDimensions
     for RgbMatrix<
+        'a,
         ColorType,
         WIDTH,
         HEIGHT,
@@ -307,6 +353,7 @@ impl<
 }
 
 impl<
+        'a,
         ColorType,
         const WIDTH: usize,
         const HEIGHT: usize,
@@ -318,6 +365,7 @@ impl<
         const BITMAP_ELEMENTS: usize,
     > DrawTarget
     for RgbMatrix<
+        'a,
         ColorType,
         WIDTH,
         HEIGHT,
