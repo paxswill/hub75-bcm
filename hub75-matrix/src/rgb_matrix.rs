@@ -10,7 +10,8 @@ use super::buffer::FrameBuffer;
 use super::color::Color;
 use super::config::MatrixConfig;
 
-enum MatrixError {
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum MatrixError {
     OutOfBounds,
 }
 
