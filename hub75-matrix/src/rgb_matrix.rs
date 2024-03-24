@@ -67,24 +67,20 @@ impl<
     const_not_zero!(COLOR_DEPTH, usize);
     const_not_zero!(PER_FRAME_DENOMINATOR, u8);
 
-    const WORDS_PER_PLANE: usize = const_check!(
+    pub const WORDS_PER_PLANE: usize = const_check!(
         WORDS_PER_PLANE,
         WORDS_PER_PLANE
-            == (
-                // Divide by 2 because each word encodes two colors
-                WIDTH * CHAIN_LENGTH * HEIGHT / (PER_FRAME_DENOMINATOR as usize) / 2
-            ),
+            == (WIDTH * CHAIN_LENGTH * HEIGHT
+                / (PER_FRAME_DENOMINATOR as usize)
+                / crate::buffer::PIXELS_PER_CLOCK),
         "WORDS_PER_PLANE must equal WIDTH * CHAIN_LENGTH * HEIGHT / PER_FRAME_DENOMINATOR / 2"
     );
 
-    const WORDS_PER_SCANLINE: usize = {
-        let pixels_per_row = Self::WIDTH * Self::CHAIN_LENGTH;
-        let rows_per_scanline = Self::HEIGHT / (Self::PER_FRAME_DENOMINATOR as usize);
-        // Each bit of color depth needs a separate word of storage as we're using BCD
-        let pixels_per_scanline = pixels_per_row * (Self::COLOR_DEPTH as usize) * rows_per_scanline;
-        // Each word already encodes 2 pixels
-        pixels_per_scanline / 2
-    };
+    pub const SCANLINES_PER_FRAME: usize = const_check!(
+        SCANLINES_PER_FRAME,
+        SCANLINES_PER_FRAME == (HEIGHT / (HEIGHT / PER_FRAME_DENOMINATOR as usize)) && (SCANLINES_PER_FRAME <= 32),
+        "SCANLINES_PER_FRAME must equal HEIGHT / (HEIGHT / PER_FRAME_DENOMINATOR), and be less than or equal to 32"
+    );
 
     const BITMAP_ELEMENTS: usize = const_check!(
         BITMAP_ELEMENTS,

@@ -55,6 +55,9 @@ pub(crate) struct PixelRef<'a> {
     pub(crate) word: &'a mut u16,
 }
 
+// Defining this here to make it easier if this needs to be added as a parameter later.
+pub(crate) const PIXELS_PER_CLOCK: usize = 2;
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ColorPlane<
     const WIDTH: usize,
@@ -90,14 +93,21 @@ impl<
     const WORDS_PER_PLANE: usize = const_check!(
         WORDS_PER_PLANE,
         WORDS_PER_PLANE
-            == (
-                // Divide by 2 because each word encodes two colors
-                WIDTH * CHAIN_LENGTH * HEIGHT / (PER_FRAME_DENOMINATOR as usize) / 2
-            ),
+            == (WIDTH * CHAIN_LENGTH * HEIGHT
+                / (PER_FRAME_DENOMINATOR as usize)
+                / PIXELS_PER_CLOCK),
         "WORDS_PER_PLANE must equal WIDTH * CHAIN_LENGTH * HEIGHT / PER_FRAME_DENOMINATOR / 2"
     );
 
     pub(crate) const fn new() -> Self {
+        // Force the compiler to evaluate all the const checks
+        let _ = Self::WIDTH;
+        let _ = Self::HEIGHT;
+        let _ = Self::CHAIN_LENGTH;
+        let _ = Self::COLOR_DEPTH;
+        let _ = Self::PER_FRAME_DENOMINATOR;
+        let _ = Self::WORDS_PER_PLANE;
+
         Self {
             buffer: [0u16; WORDS_PER_PLANE],
             _config: PhantomData,
@@ -145,14 +155,21 @@ impl<
     const WORDS_PER_PLANE: usize = const_check!(
         WORDS_PER_PLANE,
         WORDS_PER_PLANE
-            == (
-                // Divide by 2 because each word encodes two colors
-                WIDTH * CHAIN_LENGTH * HEIGHT / (PER_FRAME_DENOMINATOR as usize) / 2
-            ),
+            == (WIDTH * CHAIN_LENGTH * HEIGHT
+                / (PER_FRAME_DENOMINATOR as usize)
+                / PIXELS_PER_CLOCK),
         "WORDS_PER_PLANE must equal WIDTH * CHAIN_LENGTH * HEIGHT / PER_FRAME_DENOMINATOR / 2"
     );
 
     pub(crate) const fn new() -> Self {
+        // Force the compiler to evaluate all the const checks
+        let _ = Self::WIDTH;
+        let _ = Self::HEIGHT;
+        let _ = Self::CHAIN_LENGTH;
+        let _ = Self::COLOR_DEPTH;
+        let _ = Self::PER_FRAME_DENOMINATOR;
+        let _ = Self::WORDS_PER_PLANE;
+
         let planes = [ColorPlane::<
             WIDTH,
             HEIGHT,
@@ -218,26 +235,59 @@ impl<
     const_not_zero!(COLOR_DEPTH, usize);
     const_not_zero!(PER_FRAME_DENOMINATOR, u8);
 
-    const WORDS_PER_PLANE: usize = const_check!(
+    pub const WORDS_PER_PLANE: usize = const_check!(
         WORDS_PER_PLANE,
         WORDS_PER_PLANE
-            == (
-                // Divide by 2 because each word encodes two colors
-                WIDTH * CHAIN_LENGTH * HEIGHT / (PER_FRAME_DENOMINATOR as usize) / 2
-            ),
+            == (WIDTH * CHAIN_LENGTH * HEIGHT
+                / (PER_FRAME_DENOMINATOR as usize)
+                / PIXELS_PER_CLOCK),
         "WORDS_PER_PLANE must equal WIDTH * CHAIN_LENGTH * HEIGHT / PER_FRAME_DENOMINATOR / 2"
     );
 
-    const WORDS_PER_SCANLINE: usize = {
-        let pixels_per_row = Self::WIDTH * Self::CHAIN_LENGTH;
-        let rows_per_scanline = Self::HEIGHT / (Self::PER_FRAME_DENOMINATOR as usize);
-        // Each bit of color depth needs a separate word of storage as we're using BCD
-        let pixels_per_scanline = pixels_per_row * (Self::COLOR_DEPTH as usize) * rows_per_scanline;
-        // Each word already encodes 2 pixels
-        pixels_per_scanline / 2
-    };
+    pub const SCANLINES_PER_FRAME: usize = const_check!(
+        SCANLINES_PER_FRAME,
+        SCANLINES_PER_FRAME == (HEIGHT / (HEIGHT / PER_FRAME_DENOMINATOR as usize)) && (SCANLINES_PER_FRAME <= 32),
+        "SCANLINES_PER_FRAME must equal HEIGHT / (HEIGHT / PER_FRAME_DENOMINATOR), and be less than or equal to 32"
+    );
+
+    pub const fn width(&self) -> usize {
+        Self::WIDTH
+    }
+
+    pub const fn height(&self) -> usize {
+        Self::HEIGHT
+    }
+
+    pub const fn chain_length(&self) -> usize {
+        Self::CHAIN_LENGTH
+    }
+
+    pub const fn color_depth(&self) -> usize {
+        Self::COLOR_DEPTH
+    }
+
+    pub const fn per_frame_denominator(&self) -> u8 {
+        Self::PER_FRAME_DENOMINATOR
+    }
+
+    pub const fn words_per_plane(&self) -> usize {
+        Self::WORDS_PER_PLANE
+    }
+
+    pub const fn scanlines_per_frame(&self) -> usize {
+        Self::SCANLINES_PER_FRAME
+    }
 
     pub const fn new() -> Self {
+        // Force the compiler to evaluate all the const checks
+        let _ = Self::WIDTH;
+        let _ = Self::HEIGHT;
+        let _ = Self::CHAIN_LENGTH;
+        let _ = Self::COLOR_DEPTH;
+        let _ = Self::PER_FRAME_DENOMINATOR;
+        let _ = Self::WORDS_PER_PLANE;
+        let _ = Self::SCANLINES_PER_FRAME;
+
         let scanlines = [Scanline::<
             WIDTH,
             HEIGHT,
@@ -283,7 +333,7 @@ impl<
 
     /// Set the address, output enable, and latch values across all pixels in a framebuffer.
     pub(crate) fn set_control_bits(&mut self, latch_blanking_count: u8) {
-        let last_column = Self::WORDS_PER_SCANLINE - 1;
+        let last_column = Self::WORDS_PER_PLANE - 1;
         for pixel_ref in self.iter_mut_pixels() {
             // The first color plane has the previous scanline's address values as we're clocking
             // in the new scanline of data (except for the first row).
@@ -311,7 +361,7 @@ impl<
     }
 
     pub(crate) fn set_brightness_bits(&mut self, latch_blanking_count: u8, brightness: u8) {
-        let last_column = Self::WORDS_PER_SCANLINE - 1;
+        let last_column = Self::WORDS_PER_PLANE - 1;
         for pixel_ref in self.iter_mut_pixels() {
             let blanking_count = latch_blanking_count as usize;
             if pixel_ref.column >= blanking_count

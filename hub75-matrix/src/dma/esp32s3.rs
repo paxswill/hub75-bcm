@@ -253,7 +253,16 @@ where
         CC: MatrixChannelCreator<C>,
         C: ChannelTypes<Tx<'d> = ChannelTx<'d, T, R>>,
     {
-        let lcd_cam = lcd_cam.into_ref();
+        // Force the compiler to evaluate all the const checks
+        let _ = Self::WIDTH;
+        let _ = Self::HEIGHT;
+        let _ = Self::CHAIN_LENGTH;
+        let _ = Self::COLOR_DEPTH;
+        let _ = Self::PER_FRAME_DENOMINATOR;
+        let _ = Self::WORDS_PER_PLANE;
+        let _ = Self::SCANLINES_PER_FRAME;
+
+        // Check that we've been given enough descriptors
 
         // Due to https://www.espressif.com/sites/default/files/documentation/esp32-s3_errata_en.pdf
         // the LCD_PCLK divider must be at least 2. To make up for this the user

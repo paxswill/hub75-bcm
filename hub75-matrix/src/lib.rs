@@ -11,7 +11,7 @@ mod util;
 #[macro_export]
 macro_rules! const_check {
     ($const:expr, $test:expr, $msg:literal) => {{
-        if $test {
+        if !($test) {
             panic!($msg)
         } else {
             $const
@@ -22,6 +22,6 @@ macro_rules! const_check {
 #[macro_export]
 macro_rules! const_not_zero {
     ($id:ident, $ty:ty) => {
-        const $id: $ty = crate::const_check!($id, $id > 0, "$id cannot be 0");
+        const $id: $ty = crate::const_check!($id, $id > 0, "Cannot be 0");
     };
 }
