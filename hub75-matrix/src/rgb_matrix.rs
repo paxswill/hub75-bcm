@@ -1,4 +1,5 @@
 use core::iter;
+use core::ops::{Deref, DerefMut};
 use embedded_graphics_core::draw_target::DrawTarget;
 use embedded_graphics_core::geometry::{OriginDimensions, Size};
 use embedded_graphics_core::pixelcolor::PixelColor;
@@ -16,6 +17,7 @@ pub enum MatrixError {
 }
 
 pub struct RgbMatrix<
+    'a,
     ColorType,
     const WIDTH: usize,
     const HEIGHT: usize,
@@ -173,12 +175,16 @@ impl<
         BITMAP_ELEMENTS,
     >
 where
-    ColorType: PartialEq,
+    ColorType: PartialEq + Color<COLOR_DEPTH>,
 {
-    fn set_pixel(&mut self, x: usize, y: usize, new_color: ColorType) -> Result<(), MatrixError> {
+    pub fn set_pixel(
+        &mut self,
+        x: usize,
+        y: usize,
+        new_color: ColorType,
+    ) -> Result<(), MatrixError> {
         // Discard early out of bounds coordinates. We also can't use pattern matching here
         // because we're using const generics for all the bounds.
-        // from within trait implementations.
         if x >= Self::CHAIN_WIDTH {
             return Err(MatrixError::OutOfBounds);
         }

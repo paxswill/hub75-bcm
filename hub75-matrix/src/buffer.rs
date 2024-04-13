@@ -406,23 +406,31 @@ impl<
         green: CS,
         blue: CS,
     ) {
-        let mut bits_index_iter = red
+        let bits_index_iter = red
             .iter_bits()
             .zip(green.iter_bits())
             .zip(blue.iter_bits())
             .enumerate();
         let scanline = self.scanline_for(y);
-        for (plane_index, ((red, green), blue)) in bits_index_iter {
-            let mut color_bits = (red as u8) << 2 | (green as u8) << 1 | blue as u8;
-            if y > Self::HEIGHT / 2 {
-                color_bits <<= 3;
-            }
+        for (plane_index, ((red_bit, green_bit), blue_bit)) in bits_index_iter {
+            let scanline_idx = y % Self::SCANLINES_PER_FRAME;
+            let buffer_idx =
+                (x + ((y / Self::SCANLINES_PER_FRAME) * Self::WIDTH) % Self::WORDS_PER_PLANE);
+            let scanline = &mut self.scanlines[scanline_idx];
             let plane = &mut scanline.planes[plane_index];
-            plane.buffer[x] &= color_bits as u16;
+            let word = &mut plane.buffer[buffer_idx];
+            let pixel_selection = if y < Self::HEIGHT / PIXELS_PER_CLOCK {
+                MatrixPixel::One
+            } else {
+                MatrixPixel::Two
+            };
+            word.set_red_to(pixel_selection, red_bit);
+            word.set_green_to(pixel_selection, green_bit);
+            word.set_blue_to(pixel_selection, blue_bit);
         }
     }
 
-    pub(crate) fn buffer_iter<'a>(&'a self) -> impl Iterator<Item = &'a [u16]> {
+    pub fn buffer_iter<'a>(&'a self) -> impl Iterator<Item = &'a [u16]> {
         // Loop from 0 to COLOR_DEPTH
         (0..Self::COLOR_DEPTH)
             // Repeat each color plane index 2^(plane index) times
