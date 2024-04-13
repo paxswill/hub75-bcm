@@ -334,9 +334,8 @@ impl<
     }
 
     pub(crate) fn configure(&mut self, latch_blanking_count: u8, brightness: u8) {
-        // self.set_control_bits(latch_blanking_count);
-        // self.set_brightness_bits(latch_blanking_count, brightness);
-        self.set_test_pattern();
+        self.set_control_bits(latch_blanking_count);
+        self.set_brightness_bits(latch_blanking_count, brightness);
         self.configured = true;
     }
 
