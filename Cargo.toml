@@ -1,7 +1,13 @@
 [package]
-name = "hub75-matrix"
+name = "hub75-bcm"
 version = "0.1.0"
 edition = "2021"
+authors = ["Will Ross <paxswill@paxswill.com>"]
+description = "HUB75 RGB matrix driver using binary code modulation"
+repository = "https://git.sr.ht/~paxswill/hub75-bcm"
+license = "MIT OR Apache-2.0"
+keywords = ["hub75", "embedded-graphics", "embedded", "rgb-matrix"]
+categories = ["embedded", "no-std", "no-std::no-alloc"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
